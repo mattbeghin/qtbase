@@ -308,7 +308,8 @@ public:
         MacWindowToolBarButtonHint = 0x10000000,
         BypassGraphicsProxyWidget = 0x20000000,
         NoDropShadowWindowHint = 0x40000000,
-        WindowFullscreenButtonHint = 0x80000000
+        WindowFullscreenButtonHint = 0x80000000,
+        WindowStaysOverScreenSaver = 0x00400000
     };
 
     Q_DECLARE_FLAGS(WindowFlags, WindowType)

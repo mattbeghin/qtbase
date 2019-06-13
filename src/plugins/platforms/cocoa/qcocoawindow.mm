@@ -452,6 +452,9 @@ NSInteger QCocoaWindow::windowLevel(Qt::WindowFlags flags)
     // Tooltips should appear above StayOnTop windows.
     if (type == Qt::ToolTip)
         windowLevel = NSScreenSaverWindowLevel;
+    // GarageCube: for fullscreen over os menu bar
+    if (flags & Qt::WindowStaysOverScreenSaver)
+        windowLevel = NSScreenSaverWindowLevel+1;
 
     // Any "special" window should be in at least the same level as its parent.
     if (type != Qt::Window) {
