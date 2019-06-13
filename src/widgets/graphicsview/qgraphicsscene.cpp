@@ -1307,6 +1307,13 @@ void QGraphicsScenePrivate::sendMouseEvent(QGraphicsSceneMouseEvent *mouseEvent)
         // ### This is a temporary fix for until we get proper mouse
         // grab events.
         clearMouseGrabber();
+
+        // The above fix prevents mouseReleaseEvent to be sent to
+        // QGraphicsItem::mouseRelease and so initialPositions is not clear
+        // item still do not receive the mouseReleaseEvent, but this solves
+        // wrong positioning
+        movingItemsInitialPositions.clear();
+
         return;
     }
 
