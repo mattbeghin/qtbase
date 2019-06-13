@@ -642,8 +642,14 @@ void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
     if (!widget)
         widget = m_widget;
 
-    const bool initialPress = event->buttons() == event->button();
-    if (event->type() == QEvent::MouseButtonPress && initialPress)
+    // FIXED Matt - garageCube : when the main thread is busy and with
+    // macOS "tap to click", a little tap to click could generate a mouse
+    // press but no mouse release, because mouseState would say no button
+    // is pressed (released inbetween) and so initialPress would be false
+    //const bool initialPress = event->buttons() == event->button();
+    //if (event->type() == QEvent::MouseButtonPress && initialPress)
+    //    qt_button_down = widget;
+    if (event->type() == QEvent::MouseButtonPress)
         qt_button_down = widget;
 
     QWidget *receiver = QApplicationPrivate::pickMouseReceiver(m_widget, event->windowPos().toPoint(), &mapped, event->type(), event->buttons(),
