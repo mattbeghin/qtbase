@@ -318,6 +318,10 @@ bool QGLBuffer::isCreated() const
 void QGLBuffer::destroy()
 {
     Q_D(QGLBuffer);
+    if (d->funcs) {
+        delete d->funcs;
+        d->funcs=0;
+    }
     if (d->guard) {
         d->guard->free();
         d->guard = 0;
