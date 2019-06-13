@@ -65,6 +65,11 @@
 #endif
 #include "qcocoaintegration.h"
 
+// Pointer checks ("if (!m_platformWindow) return;") added to this file might no more be needed with Qt 5.12
+// They were added to solved crash received from users with older Qt version
+// when destroying windows while mouse had pushed some events or gesture events
+// not sure exactly
+
 // Private interface
 @interface QT_MANGLE_NAMESPACE(QNSView) ()
 - (BOOL)isTransparentForUserInput;
@@ -208,6 +213,9 @@
 
 - (void)viewDidMoveToSuperview
 {
+    if (!m_platformWindow)
+        return;
+
     auto cleanup = qScopeGuard([&] { self.previousSuperview = nil; });
 
     if (self.superview == self.previousSuperview) {
@@ -284,7 +292,7 @@
 
 - (void)viewDidHide
 {
-    if (!m_platformWindow->isExposed())
+    if (!m_platformWindow || !m_platformWindow->isExposed())
         return;
 
     m_platformWindow->handleExposeEvent(QRegion());
@@ -295,6 +303,9 @@
 
 - (BOOL)isTransparentForUserInput
 {
+    if (!m_platformWindow)
+        return NO;
+
     return m_platformWindow->window() &&
         m_platformWindow->window()->flags() & Qt::WindowTransparentForInput;
 }
