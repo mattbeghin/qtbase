@@ -472,7 +472,12 @@
     // uses the legacy cursorRect API, so the cursor is reset to the arrow
     // cursor. See rdar://34183708
 
-    if (self.cursor && self.cursor != NSCursor.currentCursor) {
+    // garageCube fix:
+    //   start creating a mask => qApp->setOverrideCursor(Qt::CrossCursor)
+    //   move over a preview => Qt switches back to arrow cursor :-/
+    //   This issue was introduced when moving from Qt 5.8 to Qt 5.12.3
+    //if (self.cursor && self.cursor != NSCursor.currentCursor) {
+    if (self.cursor) {
         qCInfo(lcQpaMouse) << "Updating cursor for" << self << "to" << self.cursor;
         [self.cursor set];
     } else {
