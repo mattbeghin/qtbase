@@ -377,7 +377,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
         // Clear the current drawable and reset the active window, so that GL
         // commands that don't target a specific FBO will not end up stomping
         // on the previously set drawable.
-        qCDebug(lcQpaOpenGLContext) << "Clearing current drawable" << m_context.view << "for" << m_context;
+        qCDebug(lcQpaOpenGLContext) << "Clearing current drawable" << [m_context view] << "for" << m_context;
         [m_context clearDrawable];
         return true;
     }
@@ -385,7 +385,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
     Q_ASSERT(surface->surface()->surfaceClass() == QSurface::Window);
     QNSView *view = qnsview_cast(static_cast<QCocoaWindow *>(surface)->view());
 
-    if (view == m_context.view)
+    if (view == [m_context view])
         return true;
 
     // Setting the drawable may happen on a separate thread as a result of
@@ -396,7 +396,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
 
     auto updateCallback = [this, view]() {
         Q_ASSERT(QThread::currentThread() == qApp->thread());
-        if (m_context.view != view)
+        if ([m_context view] != view)
             return;
         m_needsUpdate = true;
     };
@@ -419,14 +419,14 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
     // have the same effect as an update.
 
     // Now we are ready to associate the view with the context
-    m_context.view = view;
-    if (m_context.view != view) {
+    [m_context setView: view];
+    if ([m_context view] != view) {
         qCInfo(lcQpaOpenGLContext) << "Failed to set" << view << "as drawable for" << m_context;
         m_updateObservers.clear();
         return false;
     }
 
-    qCInfo(lcQpaOpenGLContext) << "Set drawable for" << m_context << "to" << m_context.view;
+    qCInfo(lcQpaOpenGLContext) << "Set drawable for" << m_context << "to" << [m_context view];
     return true;
 }
 
@@ -443,7 +443,7 @@ void QCocoaGLContext::update()
     QMacAutoReleasePool pool;
 
     QMutexLocker locker(&s_reentrancyMutex);
-    qCInfo(lcQpaOpenGLContext) << "Updating" << m_context << "for" << m_context.view;
+    qCInfo(lcQpaOpenGLContext) << "Updating" << m_context << "for" << [m_context view];
     [m_context update];
 }
 
