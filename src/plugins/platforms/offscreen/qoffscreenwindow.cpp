@@ -85,7 +85,9 @@ void QOffscreenWindow::setVisible(bool visible)
         return;
 
     if (visible) {
-        if (window()->type() != Qt::ToolTip)
+        // MadMapper: a child window shown takes no focus, as on the other platforms (a native child widget, a window
+        // container's window: its container would take the widget focus, Qt 6.8's QWindowContainer)
+        if (window()->type() != Qt::ToolTip && window()->isTopLevel())
             QWindowSystemInterface::handleFocusWindowChanged(window(), Qt::ActiveWindowFocusReason);
 
         if (m_pendingGeometryChangeOnShow) {
