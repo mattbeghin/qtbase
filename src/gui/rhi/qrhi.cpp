@@ -7618,11 +7618,14 @@ QRhiResource::Type QRhiGraphicsPipeline::resourceType() const
     extended linear Display P3 color space. The primary choice for HDR on
     platforms such as iOS and VisionOS.
 
-    \value SDR10 10 bits per color component, standard dynamic range, the
-    display's own color space (no sRGB variant: the sRGB flag is ignored, what
-    is written is what is shown). Supported with Direct3D 12 on any display
-    (the system converts what its display can't take) and Metal. Other
-    backends report it unsupported. (MadMapper's patch.)
+    \value SDR10 10 bits per color component, standard dynamic range, no sRGB
+    variant (the sRGB flag is ignored: what is written is what is shown).
+    Direct3D 12: \c{DXGI_FORMAT_R10G10B10A2_UNORM} in BT.709 with a 2.2 gamma
+    (\c{DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709}), supported on any display
+    (the system converts what its display can't take). Metal:
+    \c{MTLPixelFormatRGB10A2Unorm}, the layer in the screen's own color space,
+    as SDR's. Other backends report it unsupported and make an 8-bit SDR
+    swapchain if it's set. (MadMapper's patch.)
  */
 
 /*!
@@ -7843,6 +7846,12 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
 /*!
     \fn QRhiSwapChain::Format QRhiSwapChain::format() const
     \return the currently set format.
+
+    With Direct3D 12, a format the swapchain can't be made in is replaced by
+    SDR, from newCompatibleRenderPassDescriptor() or createOrResize(): format()
+    then returns SDR, and the format asked is forgotten. Call setFormat() again
+    before making the swapchain again (another screen, its HDR mode changed).
+    (MadMapper's patch.)
  */
 
 /*!

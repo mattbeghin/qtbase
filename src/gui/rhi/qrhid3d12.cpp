@@ -6609,12 +6609,18 @@ bool QD3D12SwapChain::createOrResize()
         // matches other backends, such as Vulkan where if the format is
         // not supported, the default one is used instead.
         if (FAILED(hr) && m_format != SDR) {
-            // MadMapper: an SDR swapchain, all of it (its render pass descriptor's format, no color space set), and
-            // format() says so
+            // MadMapper: an SDR swapchain, all of it (its views' and its render pass descriptor's format, its
+            // samples, no color space set), and format() says so. The descriptor was made before, in the format
+            // asked: it's given SDR's, so the pipelines made with it after this match the swapchain.
             m_format = SDR;
             colorFormat = DEFAULT_FORMAT;
             srgbAdjustedColorFormat = m_flags.testFlag(sRGB) ? DEFAULT_SRGB_FORMAT : DEFAULT_FORMAT;
             hdrColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+            sampleDesc = rhiD->effectiveSampleDesc(m_sampleCount, colorFormat);
+            if (QD3D12RenderPassDescriptor *rpD = QRHI_RES(QD3D12RenderPassDescriptor, m_renderPassDesc)) {
+                rpD->colorFormat[0] = int(srgbAdjustedColorFormat);
+                rpD->updateSerializedFormat();
+            }
             desc.Format = DEFAULT_FORMAT;
             if (dcompVisual)
                 hr = rhiD->dxgiFactory->CreateSwapChainForComposition(rhiD->cmdQueue, &desc, nullptr, &sourceSwapChain1);
