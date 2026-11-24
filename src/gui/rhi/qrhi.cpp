@@ -7617,6 +7617,12 @@ QRhiResource::Type QRhiGraphicsPipeline::resourceType() const
     \value HDRExtendedDisplayP3Linear 16-bit float RGBA, high dynamic range,
     extended linear Display P3 color space. The primary choice for HDR on
     platforms such as iOS and VisionOS.
+
+    \value SDR10 10 bits per color component, standard dynamic range, the
+    display's own color space (no sRGB variant: the sRGB flag is ignored, what
+    is written is what is shown). Supported with Direct3D 12 on any display
+    (the system converts what its display can't take) and Metal. Other
+    backends report it unsupported. (MadMapper's patch.)
  */
 
 /*!

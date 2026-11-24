@@ -6353,7 +6353,7 @@ bool QMetalSwapChain::isFormatSupported(Format f)
     } else if (f == HDRExtendedDisplayP3Linear) {
         return hdrInfo().limits.colorComponentValue.maxPotentialColorComponentValue > 1.0f;
     }
-    return f == SDR;
+    return f == SDR || f == SDR10; // MadMapper: SDR10
 }
 
 QRhiRenderPassDescriptor *QMetalSwapChain::newCompatibleRenderPassDescriptor()
@@ -6392,6 +6392,12 @@ void QMetalSwapChain::chooseFormats()
     if (m_format == HDRExtendedSrgbLinear || m_format == HDRExtendedDisplayP3Linear) {
         d->colorFormat = MTLPixelFormatRGBA16Float;
         d->rhiColorFormat = QRhiTexture::RGBA16F;
+        return;
+    }
+    if (m_format == SDR10) {
+        // MadMapper: 10 bits a component, its layer's color space the screen's (as SDR's)
+        d->colorFormat = MTLPixelFormatRGB10A2Unorm;
+        d->rhiColorFormat = QRhiTexture::RGB10A2;
         return;
     }
     d->colorFormat = m_flags.testFlag(sRGB) ? MTLPixelFormatBGRA8Unorm_sRGB : MTLPixelFormatBGRA8Unorm;

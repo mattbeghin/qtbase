@@ -1593,7 +1593,8 @@ public:
         SDR,
         HDRExtendedSrgbLinear,
         HDR10,
-        HDRExtendedDisplayP3Linear
+        HDRExtendedDisplayP3Linear,
+        SDR10 // MadMapper: 10 bits a component, SDR (Direct3D 12, Metal)
     };
 
     enum StereoTargetBuffer {

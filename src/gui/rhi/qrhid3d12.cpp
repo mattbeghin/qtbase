@@ -6415,7 +6415,7 @@ QSize QD3D12SwapChain::surfacePixelSize()
 
 bool QD3D12SwapChain::isFormatSupported(Format f)
 {
-    if (f == SDR)
+    if (f == SDR || f == SDR10)
         return true;
 
     if (!m_window) {
@@ -6480,7 +6480,11 @@ void QD3D12SwapChain::chooseFormats()
     srgbAdjustedColorFormat = m_flags.testFlag(sRGB) ? DEFAULT_SRGB_FORMAT : DEFAULT_FORMAT;
     hdrColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709; // SDR
     QRHI_RES_RHI(QRhiD3D12);
-    if (m_format != SDR) {
+    if (m_format == SDR10) {
+        // MadMapper: 10 bits a component in SDR's color space, on any display (the system converts what it can't take)
+        colorFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
+        srgbAdjustedColorFormat = colorFormat;
+    } else if (m_format != SDR) {
         if (QDxgiHdrInfo(rhiD->activeAdapter).isHdrCapable(m_window)) {
             // https://docs.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range
             switch (m_format) {
@@ -6503,6 +6507,7 @@ void QD3D12SwapChain::chooseFormats()
             // default non-HDR format.
             qWarning("The output associated with the window is not HDR capable "
                      "(or Use HDR is Off in the Display Settings), ignoring HDR format request");
+            m_format = SDR; // MadMapper: format() says what it is
         }
     }
     sampleDesc = rhiD->effectiveSampleDesc(m_sampleCount, colorFormat);
@@ -6604,7 +6609,12 @@ bool QD3D12SwapChain::createOrResize()
         // matches other backends, such as Vulkan where if the format is
         // not supported, the default one is used instead.
         if (FAILED(hr) && m_format != SDR) {
+            // MadMapper: an SDR swapchain, all of it (its render pass descriptor's format, no color space set), and
+            // format() says so
+            m_format = SDR;
             colorFormat = DEFAULT_FORMAT;
+            srgbAdjustedColorFormat = m_flags.testFlag(sRGB) ? DEFAULT_SRGB_FORMAT : DEFAULT_FORMAT;
+            hdrColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
             desc.Format = DEFAULT_FORMAT;
             if (dcompVisual)
                 hr = rhiD->dxgiFactory->CreateSwapChainForComposition(rhiD->cmdQueue, &desc, nullptr, &sourceSwapChain1);
