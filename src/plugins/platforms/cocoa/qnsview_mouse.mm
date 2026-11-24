@@ -3,6 +3,8 @@
 
 // This file is included from qnsview.mm, and only used to organize the code
 
+static QWindow *findEventTargetWindow(QWindow *candidate);
+
 using namespace Qt::StringLiterals;
 
 static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
@@ -513,7 +515,12 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
 
     if (m_platformWindow->isContentView()) {
         [self convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
-        QWindow *childUnderMouse = m_platformWindow->childWindowAt(windowPoint.toPoint());
+
+        // Fixes mouse events not goind through a window with flag Qt::WindowTransparentForInput
+        // See https://codereview.qt-project.org/c/qt/qtbase/+/238076/3/src/plugins/platforms/cocoa/qnsview_mouse.mm#463
+        //QWindow *childUnderMouse = m_platformWindow->childWindowAt(windowPoint.toPoint());
+        QWindow *childUnderMouse = findEventTargetWindow(m_platformWindow->childWindowAt(windowPoint.toPoint()));
+
         QCocoaWindow *childWindow = static_cast<QCocoaWindow *>(childUnderMouse->handle());
         if (childWindow != QCocoaWindow::s_windowUnderMouse) {
             if (QCocoaWindow::s_windowUnderMouse)
