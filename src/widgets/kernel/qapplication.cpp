@@ -2354,6 +2354,8 @@ bool QApplicationPrivate::sendMouseEvent(QWidget *receiver, QMouseEvent *event,
     // we do not want to send the mouse event associated with this call, so this enables us to
     // not send the unneeded mouse event
     if (!onlyDispatchEnterLeave) {
+        if (!receiverGuard)            // receiver deleted by an Enter/Leave handler
+            return false;
         if (spontaneous)
             result = QApplication::sendSpontaneousEvent(receiver, event);
         else

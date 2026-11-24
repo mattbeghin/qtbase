@@ -479,7 +479,7 @@ bool QGestureManager::filterEvent(QWidget *receiver, QEvent *event)
     }
     // find all gesture contexts for the widget tree
     w = w->isWindow() ? nullptr : w->parentWidget();
-    while (w)
+    while (w && w->d_func())
     {
         for (ContextIterator it = w->d_func()->gestureContext.constBegin(),
              e = w->d_func()->gestureContext.constEnd(); it != e; ++it) {
@@ -608,6 +608,8 @@ void QGestureManager::deliverEvents(const QSet<QGesture *> &gestures,
          e = gestures.end(); it != e; ++it) {
         QGesture *gesture = *it;
         QWidget *target = m_gestureTargets.value(gesture, nullptr);
+        // hackish fix for a crash that appeared at least in crashlogs with Qt 5.5.1
+        if (!target && gesture->state() != Qt::GestureStarted) continue;
         if (!target) {
             // the gesture has just started and doesn't have a target yet.
             Q_ASSERT(gesture->state() == Qt::GestureStarted);

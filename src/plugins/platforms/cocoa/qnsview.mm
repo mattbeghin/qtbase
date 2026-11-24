@@ -39,6 +39,11 @@
 
 #include <QuartzCore/CATransaction.h>
 
+// Pointer checks ("if (!m_platformWindow) return;") added to this file might no more be needed with Qt 5.12
+// They were added to solved crash received from users with older Qt version
+// when destroying windows while mouse had pushed some events or gesture events
+// not sure exactly
+
 @interface QNSView (Drawing) <CALayerDelegate>
 - (void)initDrawing;
 @end
@@ -293,6 +298,9 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
 */
 - (void)viewDidHide
 {
+    if (!m_platformWindow)
+        return;
+
     qCDebug(lcQpaWindow) << "Did hide" << self;
 
     if (!m_platformWindow->isExposed())
@@ -314,6 +322,9 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
 
 - (BOOL)isTransparentForUserInput
 {
+    if (!m_platformWindow)
+        return NO;
+
     return m_platformWindow->window() &&
         m_platformWindow->window()->flags() & Qt::WindowTransparentForInput;
 }
