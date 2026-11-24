@@ -280,7 +280,7 @@ public:
     QFixed ascent;
     QFixed width;
 
-    RenderFlags flags;
+    mutable RenderFlags flags;
     bool justified = false;
     QTextCharFormat::UnderlineStyle underlineStyle = QTextCharFormat::NoUnderline;
     const QTextCharFormat charFormat;

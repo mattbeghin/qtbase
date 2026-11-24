@@ -648,7 +648,7 @@ static inline QPointF qt_to_qpointf(const POINTFX &pt, qreal scale, qreal stretc
 
 static bool addGlyphToPath(glyph_t glyph, const QFixedPoint &position, HDC hdc,
                            QPainterPath *path, bool ttf, glyph_metrics_t *metric = nullptr,
-                           qreal scale = 1.0, qreal stretch = 1.0)
+                           qreal scale = 1.0, qreal stretch = 1.0, const bool closePath = true)
 {
     MAT2 mat;
     mat.eM11.value = mat.eM22.value = 1;
@@ -744,7 +744,9 @@ static bool addGlyphToPath(glyph_t glyph, const QFixedPoint &position, HDC hdc,
             }
             offset += sizeof(TTPOLYCURVE) + (curve->cpfx-1) * sizeof(POINTFX);
         }
-        path->closeSubpath();
+        if (closePath) {
+            path->closeSubpath();
+        }
         headerOffset += ttph->cb;
     }
     delete [] dataBuffer;
@@ -753,7 +755,7 @@ static bool addGlyphToPath(glyph_t glyph, const QFixedPoint &position, HDC hdc,
 }
 
 void QWindowsFontEngine::addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions, int nglyphs,
-                                     QPainterPath *path, QTextItem::RenderFlags)
+                                     QPainterPath *path, QTextItem::RenderFlags flags)
 {
     LOGFONT lf = m_logfont;
     // The sign must be negative here to make sure we match against character height instead of
@@ -768,9 +770,10 @@ void QWindowsFontEngine::addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions
 
     qreal scale = qreal(fontDef.pixelSize) / unitsPerEm;
     qreal stretch = fontDef.stretch ? qreal(fontDef.stretch) / 100 : 1.0;
+    const bool closePath = !(flags & QTextItem::DontClosePath);
     for(int i = 0; i < nglyphs; ++i) {
         if (!addGlyphToPath(glyphs[i], positions[i], hdc, path, ttf, /*metric*/0,
-                            scale, stretch)) {
+                            scale, stretch, closePath)) {
             // Some windows fonts, like "Modern", are vector stroke
             // fonts, which are reported as TMPF_VECTOR but do not
             // support GetGlyphOutline, and thus we set this bit so
@@ -877,7 +880,7 @@ void QWindowsFontEngine::getUnscaledGlyph(glyph_t glyph, QPainterPath *path, gly
     QFixedPoint p;
     p.x = 0;
     p.y = 0;
-    addGlyphToPath(glyph, p, hdc, path, ttf, metrics);
+    addGlyphToPath(glyph, p, hdc, path, ttf, metrics, true);
     DeleteObject(SelectObject(hdc, oldfont));
 }
 

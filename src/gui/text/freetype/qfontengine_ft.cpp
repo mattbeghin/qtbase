@@ -634,7 +634,7 @@ static void scaleOutline(FT_Face face, FT_GlyphSlot g, FT_Fixed x_scale, FT_Fixe
 }
 
 #define GLYPH2PATH_DEBUG QT_NO_QDEBUG_MACRO // qDebug
-void QFreetypeFace::addGlyphToPath(FT_Face face, FT_GlyphSlot g, const QFixedPoint &point, QPainterPath *path, FT_Fixed x_scale, FT_Fixed y_scale)
+void QFreetypeFace::addGlyphToPath(FT_Face face, FT_GlyphSlot g, const QFixedPoint &point, QPainterPath *path, FT_Fixed x_scale, FT_Fixed y_scale, const bool closePath)
 {
     const qreal factor = 1/64.;
     scaleOutline(face, g, x_scale, y_scale);
@@ -711,8 +711,10 @@ void QFreetypeFace::addGlyphToPath(FT_Face face, FT_GlyphSlot g, const QFixedPoi
         }
 
         if (n == 1) {
-            GLYPH2PATH_DEBUG() << "  closeSubpath";
-            path->closeSubpath();
+            if (closePath) {
+                GLYPH2PATH_DEBUG() << "  closeSubpath";
+                path->closeSubpath();
+            }
         } else {
             c[3] = start;
             if (n == 2) {
@@ -1548,7 +1550,8 @@ bool QFontEngineFT::traverseColr1(FT_OpaquePaint opaquePaint,
                                       QFixedPoint(0, 0),
                                       &path,
                                       face->units_per_EM << 6,
-                                      face->units_per_EM << 6);
+                                      face->units_per_EM << 6,
+                                      true);
 
         paintGraphRenderer->appendPath(path);
 
@@ -2276,7 +2279,7 @@ void QFontEngineFT::getUnscaledGlyph(glyph_t glyph, QPainterPath *path, glyph_me
     if (!FT_IS_SCALABLE(freetype->face))
         QFreetypeFace::addBitmapToPath(face->glyph, p, path);
     else
-        QFreetypeFace::addGlyphToPath(face, face->glyph, p, path, face->units_per_EM << 6, face->units_per_EM << 6);
+        QFreetypeFace::addGlyphToPath(face, face->glyph, p, path, face->units_per_EM << 6, face->units_per_EM << 6, true);
 
     FT_Set_Transform(face, &freetype->matrix, nullptr);
     unlockFace();
@@ -2312,7 +2315,7 @@ void QFontEngineFT::addOutlineToPath(qreal x, qreal y, const QGlyphLayout &glyph
 }
 
 void QFontEngineFT::addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions, int numGlyphs,
-                                    QPainterPath *path, QTextItem::RenderFlags)
+                                    QPainterPath *path, QTextItem::RenderFlags renderFlags)
 {
     FT_Face face = lockFace(Unscaled);
 
@@ -2328,7 +2331,7 @@ void QFontEngineFT::addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions, int
             FT_GlyphSlot_Embolden(g);
         if (obliquen)
             FT_GlyphSlot_Oblique(g);
-        QFreetypeFace::addGlyphToPath(face, g, positions[gl], path, xsize, ysize);
+        QFreetypeFace::addGlyphToPath(face, g, positions[gl], path, xsize, ysize, !(renderFlags & QTextItem::DontClosePath));
     }
     unlockFace();
 }

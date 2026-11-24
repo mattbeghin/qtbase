@@ -39,6 +39,7 @@ QT_BEGIN_NAMESPACE
   \value  Overline    Paint a line above the text.
   \value  Underline   Paint a line under the text.
   \value  StrikeOut   Paint a line through the text.
+  \value  DontClosePath Whether or not to close the glyphs subpath
   \omitvalue Dummy
 */
 
@@ -85,6 +86,15 @@ QTextItem::RenderFlags QTextItem::renderFlags() const
 {
     const QTextItemInt *ti = static_cast<const QTextItemInt *>(this);
     return ti->flags;
+}
+
+/*!
+    \fn void QTextItem::addRenderFlags
+*/
+void QTextItem::addRenderFlags(QTextItem::RenderFlags flag) const
+{
+    const QTextItemInt *ti = static_cast<const QTextItemInt *>(this);
+    ti->flags |= flag;
 }
 
 /*!

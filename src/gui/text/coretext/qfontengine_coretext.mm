@@ -500,11 +500,12 @@ void QCoreTextFontEngine::draw(CGContextRef ctx, qreal x, qreal y, const QTextIt
 
 struct ConvertPathInfo
 {
-    ConvertPathInfo(QPainterPath *newPath, const QPointF &newPos, qreal newStretch = 1.0) :
-        path(newPath), pos(newPos), stretch(newStretch) {}
+    ConvertPathInfo(QPainterPath *newPath, const QPointF &newPos, qreal newStretch = 1.0, const bool newClosePath = true) :
+        path(newPath), pos(newPos), stretch(newStretch), closePath(newClosePath) {}
     QPainterPath *path;
     QPointF pos;
     qreal stretch;
+    bool closePath;
 };
 
 static void convertCGPathToQPainterPath(void *info, const CGPathElement *element)
@@ -534,7 +535,9 @@ static void convertCGPathToQPainterPath(void *info, const CGPathElement *element
                                   element->points[2].y + myInfo->pos.y());
             break;
         case kCGPathElementCloseSubpath:
-            myInfo->path->closeSubpath();
+            if (myInfo->closePath) {
+                myInfo->path->closeSubpath();
+            }
             break;
         default:
             qCWarning(lcQpaFonts) << "Unhandled path transform type: " << element->type;
@@ -543,7 +546,7 @@ static void convertCGPathToQPainterPath(void *info, const CGPathElement *element
 }
 
 void QCoreTextFontEngine::addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions, int nGlyphs,
-                                          QPainterPath *path, QTextItem::RenderFlags)
+                                          QPainterPath *path, QTextItem::RenderFlags flags)
 {
     if (hasColorGlyphs())
         return; // We can't convert color-glyphs to path
@@ -557,7 +560,7 @@ void QCoreTextFontEngine::addGlyphsToPath(glyph_t *glyphs, QFixedPoint *position
     qreal stretch = fontDef.stretch ? qreal(fontDef.stretch) / 100 : 1.0;
     for (int i = 0; i < nGlyphs; ++i) {
         QCFType<CGPathRef> cgpath = CTFontCreatePathForGlyph(ctfont, glyphs[i], &cgMatrix);
-        ConvertPathInfo info(path, positions[i].toPointF(), stretch);
+        ConvertPathInfo info(path, positions[i].toPointF(), stretch, !(flags & QTextItem::DontClosePath));
         CGPathApply(cgpath, &info, convertCGPathToQPainterPath);
     }
 }

@@ -10,6 +10,8 @@
 #include <QtCore/qscopedpointer.h>
 #include <QtGui/qpainter.h>
 
+#define MAD_OPTIONAL_PATH_CLOSE
+
 QT_BEGIN_NAMESPACE
 
 
@@ -32,6 +34,7 @@ public:
         Overline = 0x10,
         Underline = 0x20,
         StrikeOut = 0x40,
+        DontClosePath = 0x100,
 
         Dummy = 0xffffffff
     };
@@ -41,6 +44,7 @@ public:
     qreal width() const;
 
     RenderFlags renderFlags() const;
+    void addRenderFlags(RenderFlags flag) const;
     QString text() const;
     QFont font() const;
 };
