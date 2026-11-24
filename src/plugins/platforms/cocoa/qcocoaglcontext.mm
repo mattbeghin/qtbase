@@ -366,7 +366,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
         // Clear the current drawable and reset the active window, so that GL
         // commands that don't target a specific FBO will not end up stomping
         // on the previously set drawable.
-        qCDebug(lcQpaOpenGLContext) << "Clearing current drawable" << QT_IGNORE_DEPRECATIONS(m_context.view) << "for" << m_context;
+        qCDebug(lcQpaOpenGLContext) << "Clearing current drawable" << QT_IGNORE_DEPRECATIONS([m_context view]) << "for" << m_context;
         [m_context clearDrawable];
         return true;
     }
@@ -375,7 +375,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
     auto *cocoaWindow = static_cast<QCocoaWindow *>(surface);
     QNSView *view = qnsview_cast(cocoaWindow->view());
 
-    if (view == QT_IGNORE_DEPRECATIONS(m_context.view))
+    if (view == QT_IGNORE_DEPRECATIONS([m_context view]))
         return true;
 
     // We generally want high-DPI GL surfaces, unless the user has explicitly disabled them.
@@ -394,7 +394,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
 
     auto updateCallback = [this, view]() {
         Q_ASSERT(QThread::currentThread() == qApp->thread());
-        if (QT_IGNORE_DEPRECATIONS(m_context.view) != view)
+        if (QT_IGNORE_DEPRECATIONS([m_context view]) != view)
             return;
         m_needsUpdate = true;
     };
@@ -409,7 +409,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
 
     m_updateObservers.append(QMacNotificationObserver(view,
         QCocoaWindowWillReleaseQNSViewNotification, [this, view] {
-            if (QT_IGNORE_DEPRECATIONS(m_context.view) != view)
+            if (QT_IGNORE_DEPRECATIONS([m_context view]) != view)
                 return;
             qCDebug(lcQpaOpenGLContext) << view << "about to be released."
                 << "Clearing current drawable for" << m_context;
@@ -422,14 +422,14 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
     // have the same effect as an update.
 
     // Now we are ready to associate the view with the context
-    QT_IGNORE_DEPRECATIONS(m_context.view) = view;
-    if (QT_IGNORE_DEPRECATIONS(m_context.view) != view) {
+    QT_IGNORE_DEPRECATIONS([m_context setView: view]);
+    if (QT_IGNORE_DEPRECATIONS([m_context view]) != view) {
         qCInfo(lcQpaOpenGLContext) << "Failed to set" << view << "as drawable for" << m_context;
         m_updateObservers.clear();
         return false;
     }
 
-    qCInfo(lcQpaOpenGLContext) << "Set drawable for" << m_context << "to" << QT_IGNORE_DEPRECATIONS(m_context.view);
+    qCInfo(lcQpaOpenGLContext) << "Set drawable for" << m_context << "to" << QT_IGNORE_DEPRECATIONS([m_context view]);
     return true;
 }
 
@@ -446,7 +446,7 @@ void QCocoaGLContext::update()
     QMacAutoReleasePool pool;
 
     QMutexLocker locker(&s_reentrancyMutex);
-    qCInfo(lcQpaOpenGLContext) << "Updating" << m_context << "for" << QT_IGNORE_DEPRECATIONS(m_context.view);
+    qCInfo(lcQpaOpenGLContext) << "Updating" << m_context << "for" << QT_IGNORE_DEPRECATIONS([m_context view]);
     [m_context update];
 }
 
