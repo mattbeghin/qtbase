@@ -15,11 +15,21 @@
 
 - (void)activateQtAccessibility
 {
+    // Activate the Qt accessibility machinery for all entry points
+    // below that may be triggered by system accessibility queries,
+    // as otherwise Qt is not aware that the system needs to know
+    // about all accessibility state changes in Qt.
+    QCocoaIntegration::instance()->accessibility()->setActive(true);
 }
 
 - (id)childAccessibleElement
 {
-    return nil;
+    QCocoaWindow *platformWindow = self.platformWindow;
+    if (!platformWindow || !platformWindow->window()->accessibleRoot())
+        return nil;
+
+    QAccessible::Id childId = QAccessible::uniqueId(platformWindow->window()->accessibleRoot());
+    return [QMacAccessibilityElement elementWithId:childId];
 }
 
 // The QNSView is a container that the user does not interact directly with:
@@ -31,17 +41,24 @@
 
 - (id)accessibilityAttributeValue:(NSString *)attribute
 {
-    return nil;
+    [self activateQtAccessibility];
+
+    if ([attribute isEqualToString:NSAccessibilityChildrenAttribute])
+        return NSAccessibilityUnignoredChildrenForOnlyChild([self childAccessibleElement]);
+    else
+        return [super accessibilityAttributeValue:attribute];
 }
 
 - (id)accessibilityHitTest:(NSPoint)point
 {
-    return nil;
+    [self activateQtAccessibility];
+    return [[self childAccessibleElement] accessibilityHitTest:point];
 }
 
 - (id)accessibilityFocusedUIElement
 {
-    return nil;
+    [self activateQtAccessibility];
+    return [[self childAccessibleElement] accessibilityFocusedUIElement];
 }
 
 @end
