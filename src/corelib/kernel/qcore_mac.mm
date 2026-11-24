@@ -372,7 +372,7 @@ std::optional<uint32_t> qt_mac_sipConfiguration()
             return config;
 #endif
 
-        QIOType<io_registry_entry_t> nvram = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/options");
+        QIOType<io_registry_entry_t> nvram = IORegistryEntryFromPath(MACH_PORT_NULL /* kIOMainPortDefault is macOS 12+ */, "IODeviceTree:/options");
         if (!nvram) {
             qWarning("Failed to locate NVRAM entry in IO registry");
             return {};
