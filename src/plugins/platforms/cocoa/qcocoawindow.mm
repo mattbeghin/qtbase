@@ -564,6 +564,9 @@ NSInteger QCocoaWindow::windowLevel(Qt::WindowFlags flags)
     // Tooltips should appear above StayOnTop windows.
     if (type == Qt::ToolTip)
         windowLevel = NSScreenSaverWindowLevel;
+    // Over screen saver, usefull for apps doing fullscreen display
+    if (flags & Qt::WindowStaysOverScreenSaver)
+        windowLevel = NSScreenSaverWindowLevel+1;
 
     auto *transientParent = window()->transientParent();
     if (transientParent && transientParent->handle()) {

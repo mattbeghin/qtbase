@@ -251,7 +251,8 @@ namespace Qt {
 #endif
         BypassGraphicsProxyWidget = 0x20000000,
         NoDropShadowWindowHint = 0x40000000,
-        WindowFullscreenButtonHint = 0x80000000
+        WindowFullscreenButtonHint = 0x80000000,
+        WindowStaysOverScreenSaver = 0x01000000 // MadMapper: Qt 6.9 took 0x00800000 (NoTitleBarBackgroundHint)
     };
 
     Q_DECLARE_FLAGS(WindowFlags, WindowType)
