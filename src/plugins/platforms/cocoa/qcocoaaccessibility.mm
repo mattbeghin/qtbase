@@ -27,60 +27,7 @@ QCocoaAccessibility::~QCocoaAccessibility()
 
 void QCocoaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
 {
-    if (!isActive() || !event->accessibleInterface() || !event->accessibleInterface()->isValid())
-        return;
-    QMacAccessibilityElement *element = [QMacAccessibilityElement elementWithId: event->uniqueId()];
-    if (!element) {
-        qWarning("QCocoaAccessibility::notifyAccessibilityUpdate: invalid element");
-        return;
-    }
-
-    switch (event->type()) {
-    case QAccessible::Announcement: {
-        auto *announcementEvent = static_cast<QAccessibleAnnouncementEvent *>(event);
-        auto priorityLevel = (announcementEvent->politeness() == QAccessible::AnnouncementPoliteness::Assertive)
-                ? NSAccessibilityPriorityHigh
-                : NSAccessibilityPriorityMedium;
-        NSDictionary *announcementInfo = @{
-            NSAccessibilityPriorityKey: [NSNumber numberWithInt:priorityLevel],
-            NSAccessibilityAnnouncementKey: announcementEvent->message().toNSString()
-        };
-        // post event for application element, as the comment for
-        // NSAccessibilityAnnouncementRequestedNotification in the
-        // NSAccessibilityConstants.h header says
-        NSAccessibilityPostNotificationWithUserInfo(NSApp,
-                                                    NSAccessibilityAnnouncementRequestedNotification,
-                                                    announcementInfo);
-        break;
-    }
-    case QAccessible::Focus: {
-        NSAccessibilityPostNotification(element, NSAccessibilityFocusedUIElementChangedNotification);
-        break;
-    }
-    case QAccessible::PopupMenuStart:
-        NSAccessibilityPostNotification(element, NSAccessibilityFocusedUIElementChangedNotification);
-        break;
-    case QAccessible::StateChanged:
-    case QAccessible::ValueChanged:
-    case QAccessible::TextInserted:
-    case QAccessible::TextRemoved:
-    case QAccessible::TextUpdated:
-        NSAccessibilityPostNotification(element, NSAccessibilityValueChangedNotification);
-        break;
-    case QAccessible::TextCaretMoved:
-    case QAccessible::TextSelectionChanged:
-        NSAccessibilityPostNotification(element, NSAccessibilitySelectedTextChangedNotification);
-        break;
-    case QAccessible::NameChanged:
-        NSAccessibilityPostNotification(element, NSAccessibilityTitleChangedNotification);
-        break;
-    case QAccessible::TableModelChanged:
-        // ### Could NSAccessibilityRowCountChangedNotification be relevant here?
-        [element updateTableModel];
-        break;
-    default:
-        break;
-    }
+    return;
 }
 
 void QCocoaAccessibility::setRootObject(QObject *o)
@@ -213,43 +160,7 @@ NSString *macSubrole(QAccessibleInterface *interface)
 */
 bool shouldBeIgnored(QAccessibleInterface *interface)
 {
-    // Cocoa accessibility does not have an attribute that corresponds to the Invisible/Offscreen
-    // state. Ignore interfaces with those flags set.
-    const QAccessible::State state = interface->state();
-    if (state.invisible || state.offscreen || state.invalid)
-        return true;
-
-    // Some roles are not interesting. In particular, container roles should be
-    // ignored in order to flatten the accessibility tree as seen by the user.
-    switch (interface->role()) {
-    case QAccessible::Border:      // QFrame
-    case QAccessible::Application: // We use the system-provided application element.
-    case QAccessible::ToolBar:     // Access the tool buttons directly.
-    case QAccessible::Pane:        // Scroll areas.
-    case QAccessible::Client:      // The default for QWidget.
-    case QAccessible::PopupMenu:   // Access the menu items directly
-        return true;
-    default:
-        break;
-    }
-
-    NSString *mac_role = macRole(interface);
-    if (mac_role == NSAccessibilityWindowRole || // We use the system-provided window elements.
-        mac_role == NSAccessibilityUnknownRole) {
-        return true;
-    }
-
-    if (const QObject *object = interface->object()) {
-        const QByteArrayView className = object->metaObject()->className();
-
-        // VoiceOver focusing on tool tips can be confusing. The contents of the
-        // tool tip is available through the description attribute anyway, so
-        // we disable accessibility for tool tips.
-        if (className == "QTipLabel"_ba)
-            return true;
-    }
-
-    return false;
+    return true;
 }
 
 bool defaultUnignored(QAccessibleInterface *child)
@@ -264,23 +175,8 @@ bool defaultUnignored(QAccessibleInterface *child)
 NSArray<QMacAccessibilityElement *> *unignoredChildren(QAccessibleInterface *interface,
                                     const std::function<bool(QAccessibleInterface *child)> &pred)
 {
-    int numKids = interface->childCount();
-
+    int numKids = 0;
     NSMutableArray<QMacAccessibilityElement *> *kids = [NSMutableArray<QMacAccessibilityElement *> arrayWithCapacity:numKids];
-    for (int i = 0; i < numKids; ++i) {
-        QAccessibleInterface *child = interface->child(i);
-
-        if (!pred(child))
-            continue;
-
-        QAccessible::Id childId = QAccessible::uniqueId(child);
-
-        QMacAccessibilityElement *element = [QMacAccessibilityElement elementWithId: childId];
-        if (element)
-            [kids addObject: element];
-        else
-            qWarning("QCocoaAccessibility: invalid child");
-    }
     return NSAccessibilityUnignoredChildren(kids);
 }
 
@@ -291,31 +187,6 @@ NSArray<QMacAccessibilityElement *> *unignoredChildren(QAccessibleInterface *int
 */
 NSString *getTranslatedAction(const QString &qtAction)
 {
-    if (qtAction == QAccessibleActionInterface::pressAction())
-        return NSAccessibilityPressAction;
-    else if (qtAction == QAccessibleActionInterface::increaseAction())
-        return NSAccessibilityIncrementAction;
-    else if (qtAction == QAccessibleActionInterface::decreaseAction())
-        return NSAccessibilityDecrementAction;
-    else if (qtAction == QAccessibleActionInterface::showMenuAction())
-        return NSAccessibilityShowMenuAction;
-    else if (qtAction == QAccessibleActionInterface::setFocusAction()) // Not 100% sure on this one
-        return NSAccessibilityRaiseAction;
-    else if (qtAction == QAccessibleActionInterface::toggleAction())
-        return NSAccessibilityPressAction;
-
-    // Not translated:
-    //
-    // Qt:
-    //     static const QString &checkAction();
-    //     static const QString &uncheckAction();
-    //
-    // Cocoa:
-    //      NSAccessibilityConfirmAction;
-    //      NSAccessibilityPickAction;
-    //      NSAccessibilityCancelAction;
-    //      NSAccessibilityDeleteAction;
-
     return nil;
 }
 
@@ -326,77 +197,16 @@ NSString *getTranslatedAction(const QString &qtAction)
 */
 QString translateAction(NSString *nsAction, QAccessibleInterface *interface)
 {
-    if ([nsAction compare: NSAccessibilityPressAction] == NSOrderedSame) {
-        if (interface->role() == QAccessible::CheckBox || interface->role() == QAccessible::RadioButton)
-            return QAccessibleActionInterface::toggleAction();
-        return QAccessibleActionInterface::pressAction();
-    } else if ([nsAction compare: NSAccessibilityIncrementAction] == NSOrderedSame)
-        return QAccessibleActionInterface::increaseAction();
-    else if ([nsAction compare: NSAccessibilityDecrementAction] == NSOrderedSame)
-        return QAccessibleActionInterface::decreaseAction();
-    else if ([nsAction compare: NSAccessibilityShowMenuAction] == NSOrderedSame)
-        return QAccessibleActionInterface::showMenuAction();
-    else if ([nsAction compare: NSAccessibilityRaiseAction] == NSOrderedSame)
-        return QAccessibleActionInterface::setFocusAction();
-
-    // See getTranslatedAction for not matched translations.
-
     return QString();
 }
 
 bool hasValueAttribute(QAccessibleInterface *interface)
 {
-    Q_ASSERT(interface);
-    const QAccessible::Role qtrole = interface->role();
-    if (qtrole == QAccessible::EditableText
-            || qtrole == QAccessible::StaticText
-            || interface->valueInterface()
-            || interface->state().checkable) {
-        return true;
-    }
-
     return false;
 }
 
 id getValueAttribute(QAccessibleInterface *interface)
 {
-    const QAccessible::Role qtrole = interface->role();
-    if (qtrole == QAccessible::StaticText) {
-        return interface->text(QAccessible::Name).toNSString();
-    }
-    if (qtrole == QAccessible::EditableText) {
-        if (QAccessibleTextInterface *textInterface = interface->textInterface()) {
-
-            int begin = 0;
-            int end = textInterface->characterCount();
-            QString text;
-            if (interface->state().passwordEdit) {
-                // return round password replacement chars
-                text = QString(end, QChar(0x2022));
-            } else {
-                // VoiceOver will read out the entire text string at once when returning
-                // text as a value. For large text edits the size of the returned string
-                // needs to be limited and text range attributes need to be used instead.
-                // NSTextEdit returns the first sentence as the value, Do the same here:
-                // ### call to textAfterOffset hangs. Booo!
-                //if (textInterface->characterCount() > 0)
-                //    textInterface->textAfterOffset(0, QAccessible2::SentenceBoundary, &begin, &end);
-                text = textInterface->text(begin, end);
-            }
-            return text.toNSString();
-        }
-    }
-
-    if (QAccessibleValueInterface *valueInterface = interface->valueInterface()) {
-        return valueInterface->currentValue().toString().toNSString();
-    }
-
-    if (interface->state().checkable) {
-        if (interface->state().checkStateMixed)
-            return @(2);
-        return interface->state().checked ? @(1) : @(0);
-    }
-
     return nil;
 }
 
