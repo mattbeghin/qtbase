@@ -6609,18 +6609,13 @@ bool QD3D12SwapChain::createOrResize()
         // matches other backends, such as Vulkan where if the format is
         // not supported, the default one is used instead.
         if (FAILED(hr) && m_format != SDR) {
-            // MadMapper: an SDR swapchain, all of it (its views' and its render pass descriptor's format, its
-            // samples, no color space set), and format() says so. The descriptor was made before, in the format
-            // asked: it's given SDR's, so the pipelines made with it after this match the swapchain.
+            // MadMapper: an SDR swapchain, all of it (its views' format, its samples, no color space set; its render
+            // pass descriptor's format below), and format() says so
             m_format = SDR;
             colorFormat = DEFAULT_FORMAT;
             srgbAdjustedColorFormat = m_flags.testFlag(sRGB) ? DEFAULT_SRGB_FORMAT : DEFAULT_FORMAT;
             hdrColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
             sampleDesc = rhiD->effectiveSampleDesc(m_sampleCount, colorFormat);
-            if (QD3D12RenderPassDescriptor *rpD = QRHI_RES(QD3D12RenderPassDescriptor, m_renderPassDesc)) {
-                rpD->colorFormat[0] = int(srgbAdjustedColorFormat);
-                rpD->updateSerializedFormat();
-            }
             desc.Format = DEFAULT_FORMAT;
             if (dcompVisual)
                 hr = rhiD->dxgiFactory->CreateSwapChainForComposition(rhiD->cmdQueue, &desc, nullptr, &sourceSwapChain1);
@@ -6668,6 +6663,16 @@ bool QD3D12SwapChain::createOrResize()
                      desc.Width, desc.Height, UINT(desc.Format), desc.SampleDesc.Count,
                      desc.BufferCount, UINT(desc.Scaling), UINT(desc.SwapEffect), UINT(desc.Stereo));
             return false;
+        }
+
+        // MadMapper: the render pass descriptor was made before, by newCompatibleRenderPassDescriptor(), in the format
+        // chosen then. The swapchain may have another: it fell back to SDR above, or this call's chooseFormats() did
+        // (an HDR format asked, the display out of HDR by now, or the window on another screen). The descriptor is
+        // given the swapchain's format, so the pipelines made with it after this match the swapchain.
+        if (QD3D12RenderPassDescriptor *rpD = QRHI_RES(QD3D12RenderPassDescriptor, m_renderPassDesc);
+            rpD && rpD->colorFormat[0] != int(srgbAdjustedColorFormat)) {
+            rpD->colorFormat[0] = int(srgbAdjustedColorFormat);
+            rpD->updateSerializedFormat();
         }
 
         for (int i = 0; i < QD3D12_FRAMES_IN_FLIGHT; ++i) {

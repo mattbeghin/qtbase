@@ -7851,7 +7851,10 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
     SDR, from newCompatibleRenderPassDescriptor() or createOrResize(): format()
     then returns SDR, and the format asked is forgotten. Call setFormat() again
     before making the swapchain again (another screen, its HDR mode changed).
-    (MadMapper's patch.)
+    When createOrResize() makes the swapchain in another format than the one
+    its render pass descriptor (setRenderPassDescriptor()) was made in, it
+    gives the descriptor the swapchain's format: the graphics pipelines made
+    with the descriptor before must be made again. (MadMapper's patch.)
  */
 
 /*!
