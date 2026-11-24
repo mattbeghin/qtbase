@@ -209,7 +209,8 @@ void QOffscreenBackingStore::clearHash()
 {
     for (auto it = m_windowAreaHash.cbegin(), end = m_windowAreaHash.cend(); it != end; ++it) {
         const auto it2 = std::as_const(m_backingStoreForWinIdHash).find(it.key());
-        if (it2.value() == this)
+        // MadMapper: a window another backing store drew last has no entry left once that one is gone
+        if (it2 != m_backingStoreForWinIdHash.cend() && it2.value() == this)
             m_backingStoreForWinIdHash.erase(it2);
     }
     m_windowAreaHash.clear();
