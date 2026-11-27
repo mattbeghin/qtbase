@@ -1106,6 +1106,20 @@ Q_LOGGING_CATEGORY(QRHI_LOG_RUB, "qt.rhi.rub")
 /*!
     \enum QRhi::BeginFrameFlag
     Flag values for QRhi::beginFrame()
+
+    \value SameFrameSlot Specifies that the frame shares the frame slot of the
+    frame begun last on this QRhi (ended since), as a group of frames rendering
+    to several swapchains, one after the other on the same thread, in the same
+    tick: the frame does not wait for the GPU to finish the earlier frames of
+    its slot (the group's), and nothing completes or is released as it begins
+    (readbacks, deferred releases: they do as the next frame without the flag
+    begins in that slot). The frames of a group must not update a
+    QRhiBuffer::Dynamic buffer that an earlier frame of the group used: they
+    use the same copy of it, which the GPU may still be reading. Without the
+    flag a frame takes the next frame slot, whatever swapchain it renders to,
+    and waits for the earlier frames of that slot, every swapchain's. Supported
+    by the Direct3D 12 backend (a MadMapper patch); the other backends ignore
+    it, every frame then taking its swapchain's own slot.
  */
 
 /*!

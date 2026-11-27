@@ -1626,42 +1626,55 @@ static void calculateGpuTime(QD3D12CommandBuffer *cbD,
 
 QRhi::FrameOpResult QRhiD3D12::beginFrame(QRhiSwapChain *swapChain, QRhi::BeginFrameFlags flags)
 {
-    Q_UNUSED(flags);
-
     QD3D12SwapChain *swapChainD = QRHI_RES(QD3D12SwapChain, swapChain);
     currentSwapChain = swapChainD;
-    currentFrameSlot = swapChainD->currentFrameSlot;
+
+    // MadMapper: the frame slots are the QRhi's, not each swapchain's (they
+    // were: swapchain A starting its frame 0, then swapchain B its own frame 0,
+    // B waited for A's frame 0 commands, just submitted: with several windows
+    // rendered one after the other on one thread, each waited for the GPU to
+    // finish the one before). A frame takes the next slot, whatever its
+    // swapchain, as an offscreen frame does, and waits for the earlier frames
+    // of that slot, every swapchain's: those of two frames before, or of two
+    // groups before. A frame of the same group (SameFrameSlot: the windows
+    // of a tick after its first frame) shares the last frame's slot: its
+    // earlier frames are the group's, not waited for; what the slot holds (its
+    // command allocator, its descriptor heap's and staging area's space) is
+    // theirs too, nothing reset, released nor read back as it begins.
+    const bool sameSlot = flags.testFlag(QRhi::SameFrameSlot);
+    if (!sameSlot)
+        currentFrameSlot = (currentFrameSlot + 1) % QD3D12_FRAMES_IN_FLIGHT;
+    swapChainD->currentFrameSlot = currentFrameSlot;
     QD3D12SwapChain::FrameResources &fr(swapChainD->frameRes[currentFrameSlot]);
 
-    // We could do smarter things but mirror the Vulkan backend for now: Make
-    // sure the previous commands for this same frame slot have finished. Do
-    // this also for any other swapchain's commands with the same frame slot.
-    // While this reduces concurrency in render-to-swapchain-A,
-    // render-to-swapchain-B, repeat kind of scenarios, it keeps resource usage
-    // safe: swapchain A starting its frame 0, followed by swapchain B starting
-    // its own frame 0 will make B wait for A's frame 0 commands. If a resource
-    // is written in B's frame or when B checks for pending resource releases,
-    // that won't mess up A's in-flight commands (as they are guaranteed not to
-    // be in flight anymore). With Qt Quick this situation cannot happen anyway
-    // by design (one QRhi per window).
-    for (QD3D12SwapChain *sc : std::as_const(swapchains))
-        sc->waitCommandCompletionForFrameSlot(currentFrameSlot); // note: swapChainD->currentFrameSlot, not sc's
+    if (sameSlot) {
+        // Its own frame of this slot an earlier group's: done (waited for as
+        // the group began), unless it's begun twice in the group
+        swapChainD->waitCommandCompletionForFrameSlot(currentFrameSlot);
+    } else {
+        for (QD3D12SwapChain *sc : std::as_const(swapchains))
+            sc->waitCommandCompletionForFrameSlot(currentFrameSlot);
+    }
 
     if (swapChainD->frameLatencyWaitableObject) {
         // only wait when endFrame() called Present(), otherwise this would become a 1 sec timeout
-        if (swapChainD->lastFrameLatencyWaitSlot != currentFrameSlot) {
+        if (swapChainD->frameLatencyWaitDue) {
             WaitForSingleObjectEx(swapChainD->frameLatencyWaitableObject, 1000, true);
-            swapChainD->lastFrameLatencyWaitSlot = currentFrameSlot;
+            swapChainD->frameLatencyWaitDue = false;
         }
     }
 
-    HRESULT hr = cmdAllocators[currentFrameSlot]->Reset();
-    if (FAILED(hr)) {
-        qWarning("Failed to reset command allocator: %s",
-                 qPrintable(QSystemError::windowsComString(hr)));
-        return QRhi::FrameOpError;
+    if (!sameSlot) {
+        HRESULT hr = cmdAllocators[currentFrameSlot]->Reset();
+        if (FAILED(hr)) {
+            qWarning("Failed to reset command allocator: %s",
+                     qPrintable(QSystemError::windowsComString(hr)));
+            return QRhi::FrameOpError;
+        }
     }
 
+    // Its command list from the slot's allocator: in the same slot, the
+    // group's earlier lists closed (each frame's ended before the next begins)
     if (!startCommandListForCurrentFrameSlot(&fr.cmdList))
         return QRhi::FrameOpError;
 
@@ -1687,31 +1700,39 @@ QRhi::FrameOpResult QRhiD3D12::beginFrame(QRhiSwapChain *swapChain, QRhi::BeginF
 
     // Time to release things that are marked for currentFrameSlot since due to
     // the wait above we know that the previous commands on the GPU for this
-    // slot must have finished already.
-    releaseQueue.executeDeferredReleases(currentFrameSlot);
+    // slot must have finished already. Not in a group's later frame: its
+    // earlier frames, in flight, may use them (MadMapper)
+    if (!sameSlot)
+        releaseQueue.executeDeferredReleases(currentFrameSlot);
 
     // Full reset of the command buffer data.
     cbD->resetState();
 
-    // Move the head back to zero for the per-frame shader-visible descriptor heap work areas.
-    shaderVisibleCbvSrvUavHeap.perFrameHeapSlice[currentFrameSlot].head = 0;
-    // Same for the small staging area.
-    smallStagingAreas[currentFrameSlot].head = 0;
+    if (!sameSlot) {
+        // Move the head back to zero for the per-frame shader-visible descriptor heap work areas.
+        shaderVisibleCbvSrvUavHeap.perFrameHeapSlice[currentFrameSlot].head = 0;
+        // Same for the small staging area.
+        smallStagingAreas[currentFrameSlot].head = 0;
+    }
 
     bindShaderVisibleHeaps(cbD);
 
-    finishActiveReadbacks(); // last, in case the readback-completed callback issues rhi calls
+    if (!sameSlot)
+        finishActiveReadbacks(); // last, in case the readback-completed callback issues rhi calls
 
-    if (timestampQueryHeap.isValid() && timestampTicksPerSecond) {
+    // MadMapper: its swapchain's own timestamps: the group's other frames' never
+    // overwrite them. Its previous frame of this slot done (waited for above,
+    // or as its group began)
+    if (swapChainD->timestampQueryHeap.isValid() && timestampTicksPerSecond) {
         // Read the timestamps for the previous frame for this slot. (the
         // ResolveQuery() should have completed by now due to the wait above)
-        const int timestampPairStartIndex = currentFrameSlot * QD3D12_FRAMES_IN_FLIGHT;
+        const int timestampPairStartIndex = currentFrameSlot * 2;
         calculateGpuTime(cbD,
                          timestampPairStartIndex,
-                         timestampReadbackArea.mem.p,
+                         swapChainD->timestampReadbackArea.mem.p,
                          timestampTicksPerSecond);
         // Write the start timestamp for this frame for this slot.
-        cbD->cmdList->EndQuery(timestampQueryHeap.heap,
+        cbD->cmdList->EndQuery(swapChainD->timestampQueryHeap.heap,
                                D3D12_QUERY_TYPE_TIMESTAMP,
                                timestampPairStartIndex);
     }
@@ -1742,16 +1763,16 @@ QRhi::FrameOpResult QRhiD3D12::endFrame(QRhiSwapChain *swapChain, QRhi::EndFrame
     barrierGen.addTransitionBarrier(backBufferResourceHandle, D3D12_RESOURCE_STATE_PRESENT);
     barrierGen.enqueueBufferedTransitionBarriers(cbD);
 
-    if (timestampQueryHeap.isValid()) {
-        const int timestampPairStartIndex = currentFrameSlot * QD3D12_FRAMES_IN_FLIGHT;
-        cbD->cmdList->EndQuery(timestampQueryHeap.heap,
+    if (swapChainD->timestampQueryHeap.isValid()) { // MadMapper: its swapchain's
+        const int timestampPairStartIndex = currentFrameSlot * 2;
+        cbD->cmdList->EndQuery(swapChainD->timestampQueryHeap.heap,
                                D3D12_QUERY_TYPE_TIMESTAMP,
                                timestampPairStartIndex + 1);
-        cbD->cmdList->ResolveQueryData(timestampQueryHeap.heap,
+        cbD->cmdList->ResolveQueryData(swapChainD->timestampQueryHeap.heap,
                                        D3D12_QUERY_TYPE_TIMESTAMP,
                                        timestampPairStartIndex,
                                        2,
-                                       timestampReadbackArea.mem.buffer,
+                                       swapChainD->timestampReadbackArea.mem.buffer,
                                        timestampPairStartIndex * sizeof(quint64));
     }
 
@@ -1766,6 +1787,12 @@ QRhi::FrameOpResult QRhiD3D12::endFrame(QRhiSwapChain *swapChain, QRhi::EndFrame
     ID3D12CommandList *execList[] = { cmdList };
     cmdQueue->ExecuteCommandLists(1, execList);
 
+    // MadMapper: its commands are executed whether it presents or not, so
+    // they're fenced and their releases activated all the same: a failed
+    // present returned before, and the slot's next wait didn't cover them
+    // (its allocator reset, its releases done, under a list still running)
+    QRhi::FrameOpResult result = QRhi::FrameOpSuccess;
+    bool presented = false;
     if (!flags.testFlag(QRhi::SkipPresent)) {
         UINT presentFlags = 0;
         if (swapChainD->swapInterval == 0
@@ -1775,20 +1802,22 @@ QRhi::FrameOpResult QRhiD3D12::endFrame(QRhiSwapChain *swapChain, QRhi::EndFrame
         }
         if (!swapChainD->swapChain) {
             qWarning("Failed to present, no swapchain");
-            return QRhi::FrameOpError;
+            result = QRhi::FrameOpError;
+        } else {
+            HRESULT hr = swapChainD->swapChain->Present(swapChainD->swapInterval, presentFlags);
+            if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
+                qWarning("Device loss detected in Present()");
+                deviceLost = true;
+                result = QRhi::FrameOpDeviceLost;
+            } else if (FAILED(hr)) {
+                qWarning("Failed to present: %s", qPrintable(QSystemError::windowsComString(hr)));
+                result = QRhi::FrameOpError;
+            } else {
+                presented = true;
+                if (dcompDevice && swapChainD->dcompTarget && swapChainD->dcompVisual)
+                    dcompDevice->Commit();
+            }
         }
-        HRESULT hr = swapChainD->swapChain->Present(swapChainD->swapInterval, presentFlags);
-        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
-            qWarning("Device loss detected in Present()");
-            deviceLost = true;
-            return QRhi::FrameOpDeviceLost;
-        } else if (FAILED(hr)) {
-            qWarning("Failed to present: %s", qPrintable(QSystemError::windowsComString(hr)));
-            return QRhi::FrameOpError;
-        }
-
-        if (dcompDevice && swapChainD->dcompTarget && swapChainD->dcompVisual)
-            dcompDevice->Commit();
     }
 
     swapChainD->addCommandCompletionSignalForCurrentFrameSlot();
@@ -1800,16 +1829,15 @@ QRhi::FrameOpResult QRhiD3D12::endFrame(QRhiSwapChain *swapChain, QRhi::EndFrame
     // counting starting from now.
     releaseQueue.activatePendingDeferredReleaseRequests(currentFrameSlot);
 
-    if (!flags.testFlag(QRhi::SkipPresent)) {
-        // Only move to the next slot if we presented. Otherwise will block and
-        // wait for completion in the next beginFrame already, but SkipPresent
-        // should be infrequent anyway.
-        swapChainD->currentFrameSlot = (swapChainD->currentFrameSlot + 1) % QD3D12_FRAMES_IN_FLIGHT;
+    if (presented) {
+        // MadMapper: the next frame takes its slot from the QRhi (beginFrame);
+        // it waits on the frame latency object, as it presented
+        swapChainD->frameLatencyWaitDue = true;
         swapChainD->currentBackBufferIndex = swapChainD->swapChain->GetCurrentBackBufferIndex();
     }
 
     currentSwapChain = nullptr;
-    return QRhi::FrameOpSuccess;
+    return result;
 }
 
 QRhi::FrameOpResult QRhiD3D12::beginOffscreenFrame(QRhiCommandBuffer **cb, QRhi::BeginFrameFlags flags)
@@ -6350,6 +6378,10 @@ void QD3D12SwapChain::destroy()
         frameLatencyWaitableObject = nullptr;
     }
 
+    // MadMapper: its timestamps (the GPU waited for: releaseBuffers)
+    timestampQueryHeap.destroy();
+    timestampReadbackArea.destroy();
+
     QDxgiVSyncService::instance()->unregisterWindow(window);
 
     QRHI_RES_RHI(QRhiD3D12);
@@ -6792,7 +6824,21 @@ bool QD3D12SwapChain::createOrResize()
 
     currentBackBufferIndex = swapChain->GetCurrentBackBufferIndex();
     currentFrameSlot = 0;
-    lastFrameLatencyWaitSlot = -1; // wait already in the first frame, as instructed in the dxgi docs
+    frameLatencyWaitDue = true; // wait already in the first frame, as instructed in the dxgi docs
+
+    // MadMapper: its own timestamps (a pair a frame slot), when the QRhi has them
+    if (rhiD->timestampQueryHeap.isValid() && !timestampQueryHeap.isValid()) {
+        const quint32 timestampCount = QD3D12_FRAMES_IN_FLIGHT * 2;
+        if (!timestampQueryHeap.create(rhiD->dev, timestampCount, D3D12_QUERY_HEAP_TYPE_TIMESTAMP)) {
+            qWarning("Failed to create a swapchain's timestamp query pool");
+        } else if (!timestampReadbackArea.create(rhiD, timestampCount * sizeof(quint64), D3D12_HEAP_TYPE_READBACK)) {
+            qWarning("Failed to create a swapchain's timestamp readback buffer");
+            timestampQueryHeap.destroy();
+        } else {
+            timestampReadbackArea.mem.buffer->SetName(L"Swapchain timestamp readback buffer");
+            memset(timestampReadbackArea.mem.p, 0, timestampCount * sizeof(quint64));
+        }
+    }
 
     rtWrapper.setRenderPassDescriptor(m_renderPassDesc); // for the public getter in QRhiRenderTarget
     QD3D12SwapChainRenderTarget *rtD = QRHI_RES(QD3D12SwapChainRenderTarget, &rtWrapper);

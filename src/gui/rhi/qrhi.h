@@ -1917,6 +1917,7 @@ public:
     };
 
     enum BeginFrameFlag {
+        SameFrameSlot = 1 << 0 // MadMapper
     };
     Q_DECLARE_FLAGS(BeginFrameFlags, BeginFrameFlag)
 

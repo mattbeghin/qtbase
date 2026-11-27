@@ -1078,8 +1078,14 @@ struct QD3D12SwapChain : public QRhiSwapChain
         D3D12GraphicsCommandList *cmdList = nullptr;
     } frameRes[QD3D12_FRAMES_IN_FLIGHT];
 
-    int currentFrameSlot = 0; // index in frameRes
-    int lastFrameLatencyWaitSlot = -1;
+    int currentFrameSlot = 0; // index in frameRes: the QRhi's slot of its current frame (MadMapper)
+    // MadMapper: whether its next frame waits on frameLatencyWaitableObject: it presented since its last wait (or it
+    // is new). Its frames' slots are the QRhi's, no longer a count of its presents
+    bool frameLatencyWaitDue = true;
+    // MadMapper: its frames' timestamps (a pair a frame slot), its own: those of the QRhi's other frames in the same
+    // slot (another swapchain's, SameFrameSlot) never overwrite them
+    QD3D12QueryHeap timestampQueryHeap;
+    QD3D12StagingArea timestampReadbackArea;
 };
 
 template<typename T, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type>
