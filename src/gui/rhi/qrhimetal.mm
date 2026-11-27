@@ -1515,12 +1515,14 @@ void QRhiMetal::setGraphicsPipeline(QRhiCommandBuffer *cb, QRhiGraphicsPipeline 
 
     // mark work buffers that can now be safely reused as reusable
     // NOTE: These are  usually empty unless tessellation or mutiview is used.
+    // MadMapper: not in a group's later frame (SameFrameSlot): those of the
+    // slot may be its earlier frames', in flight
     for (QMetalBuffer *workBuf : psD->d->extraBufMgr.deviceLocalWorkBuffers) {
-        if (workBuf && workBuf->lastActiveFrameSlot == currentFrameSlot)
+        if (workBuf && workBuf->lastActiveFrameSlot == currentFrameSlot && !sameFrameSlot)
             workBuf->lastActiveFrameSlot = -1;
     }
     for (QMetalBuffer *workBuf : psD->d->extraBufMgr.hostVisibleWorkBuffers) {
-        if (workBuf && workBuf->lastActiveFrameSlot == currentFrameSlot)
+        if (workBuf && workBuf->lastActiveFrameSlot == currentFrameSlot && !sameFrameSlot)
             workBuf->lastActiveFrameSlot = -1;
     }
 
@@ -2377,15 +2379,32 @@ double QRhiMetal::lastCompletedGpuTime(QRhiCommandBuffer *cb)
 
 QRhi::FrameOpResult QRhiMetal::beginFrame(QRhiSwapChain *swapChain, QRhi::BeginFrameFlags flags)
 {
-    Q_UNUSED(flags);
-
     QMetalSwapChain *swapChainD = QRHI_RES(QMetalSwapChain, swapChain);
     currentSwapChain = swapChainD;
-    currentFrameSlot = swapChainD->currentFrameSlot;
+
+    // MadMapper: the frame slots are the QRhi's, not each swapchain's (they
+    // were: swapchain A starting its frame 0, then swapchain B its own frame 0,
+    // B waited for A's frame 0 commands, just committed: with several windows
+    // rendered one after the other on one thread, each waited for the GPU to
+    // finish the one before). A frame takes the next slot, whatever its
+    // swapchain, as an offscreen frame does, and waits for the earlier frames
+    // of that slot, every swapchain's: those of two frames before, or of two
+    // groups before. A frame of the same group (SameFrameSlot: the windows of a
+    // tick after its first frame) shares the last frame's slot: its earlier
+    // frames are the group's, not waited for; what the slot holds is theirs
+    // too, nothing released, read back nor made reusable as it begins.
+    sameFrameSlot = flags.testFlag(QRhi::SameFrameSlot);
+    if (!sameFrameSlot)
+        currentFrameSlot = (currentFrameSlot + 1) % QMTL_FRAMES_IN_FLIGHT;
+    swapChainD->currentFrameSlot = currentFrameSlot;
 
     // If we are too far ahead, block. This is also what ensures that any
     // resource used in the previous frame for this slot is now not in use
     // anymore by the GPU.
+    // MadMapper: its own frame of this slot, what its swapchain has of the slot
+    // (msaaTex, lastGpuTime), signaled by that frame's completion: an earlier
+    // group's, done (waited for as its group began), unless it's begun twice in
+    // the group
     dispatch_semaphore_wait(swapChainD->d->sem[currentFrameSlot], DISPATCH_TIME_FOREVER);
 
     // Do this also for any other swapchain's commands with the same frame slot
@@ -2394,9 +2413,12 @@ QRhi::FrameOpResult QRhiMetal::beginFrame(QRhiSwapChain *swapChain, QRhi::BeginF
     // will make B wait for A's frame 0 commands, so if a resource is written
     // in B's frame or when B checks for pending resource releases, that won't
     // mess up A's in-flight commands (as they are not in flight anymore).
-    for (QMetalSwapChain *sc : std::as_const(swapchains)) {
-        if (sc != swapChainD)
-            sc->waitUntilCompleted(currentFrameSlot); // wait+signal
+    // MadMapper: not in a group's later frame (the group's own, in flight)
+    if (!sameFrameSlot) {
+        for (QMetalSwapChain *sc : std::as_const(swapchains)) {
+            if (sc != swapChainD)
+                sc->waitUntilCompleted(currentFrameSlot); // wait+signal
+        }
     }
 
     [d->captureScope beginScope];
@@ -2420,10 +2442,15 @@ QRhi::FrameOpResult QRhiMetal::beginFrame(QRhiSwapChain *swapChain, QRhi::BeginF
     if (swapChainD->ds)
         swapChainD->ds->lastActiveFrameSlot = currentFrameSlot;
 
-    executeDeferredReleases();
+    // MadMapper: not in a group's later frame: its earlier frames, in flight,
+    // may use what was last used in the slot, and the slot's readbacks are
+    // completed once they're done
+    if (!sameFrameSlot)
+        executeDeferredReleases();
     swapChainD->cbWrapper.resetState(swapChainD->d->lastGpuTime[currentFrameSlot]);
     swapChainD->d->lastGpuTime[currentFrameSlot] = 0;
-    finishActiveReadbacks();
+    if (!sameFrameSlot)
+        finishActiveReadbacks();
 
     return QRhi::FrameOpSuccess;
 }
@@ -2514,8 +2541,7 @@ QRhi::FrameOpResult QRhiMetal::endFrame(QRhiSwapChain *swapChain, QRhi::EndFrame
             // Still need to commit, even if we don't have a drawable
             [commandBuffer commit];
         }
-
-        swapChainD->currentFrameSlot = (swapChainD->currentFrameSlot + 1) % QMTL_FRAMES_IN_FLIGHT;
+        // MadMapper: the next frame takes its slot from the QRhi (beginFrame)
     }
 
     // Must not hold on to the drawable, regardless of needsPresent
@@ -2534,6 +2560,7 @@ QRhi::FrameOpResult QRhiMetal::beginOffscreenFrame(QRhiCommandBuffer **cb, QRhi:
     Q_UNUSED(flags);
 
     currentFrameSlot = (currentFrameSlot + 1) % QMTL_FRAMES_IN_FLIGHT;
+    sameFrameSlot = false; // MadMapper
 
     for (QMetalSwapChain *sc : std::as_const(swapchains))
         sc->waitUntilCompleted(currentFrameSlot);
@@ -6500,7 +6527,7 @@ bool QMetalSwapChain::createOrResize()
             d->sem[i] = dispatch_semaphore_create(QMTL_FRAMES_IN_FLIGHT - 1);
     }
 
-    currentFrameSlot = 0;
+    // MadMapper: currentFrameSlot kept: its last frame's (the QRhi's slots)
     frameCount = 0;
 
     ds = m_depthStencil ? QRHI_RES(QMetalRenderBuffer, m_depthStencil) : nullptr;
@@ -6545,7 +6572,11 @@ bool QMetalSwapChain::createOrResize()
             if (d->msaaTex[i]) {
                 QRhiMetalData::DeferredReleaseEntry e;
                 e.type = QRhiMetalData::DeferredReleaseEntry::RenderBuffer;
-                e.lastActiveFrameSlot = 1; // because currentFrameSlot is reset to 0
+                // MadMapper: its last frame's slot, the QRhi's: released as
+                // that slot's next group begins, once every frame of the
+                // slot and of the other slot before it is done (it was 1: the
+                // swapchain's own slots, reset to 0)
+                e.lastActiveFrameSlot = currentFrameSlot;
                 e.renderbuffer.texture = d->msaaTex[i];
                 rhiD->d->releaseQueue.append(e);
             }

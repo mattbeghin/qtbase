@@ -1115,11 +1115,13 @@ Q_LOGGING_CATEGORY(QRHI_LOG_RUB, "qt.rhi.rub")
     (readbacks, deferred releases: they do as the next frame without the flag
     begins in that slot). The frames of a group must not update a
     QRhiBuffer::Dynamic buffer that an earlier frame of the group used: they
-    use the same copy of it, which the GPU may still be reading. Without the
-    flag a frame takes the next frame slot, whatever swapchain it renders to,
-    and waits for the earlier frames of that slot, every swapchain's. Supported
-    by the Direct3D 12 backend (a MadMapper patch); the other backends ignore
-    it, every frame then taking its swapchain's own slot.
+    use the same copy of it, which the GPU may still be reading. With Metal, a
+    Static or Immutable buffer either (but a storage buffer): it has a copy per
+    frame slot too, its uploads written by the CPU into the slot's copy. Without
+    the flag a frame takes the next frame slot, whatever swapchain it renders
+    to, and waits for the earlier frames of that slot, every swapchain's.
+    Supported by the Direct3D 12 and Metal backends (MadMapper patches); the
+    other backends ignore it, every frame then taking its swapchain's own slot.
  */
 
 /*!

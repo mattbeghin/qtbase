@@ -508,6 +508,9 @@ public:
     bool importedDevice = false;
     bool importedCmdQueue = false;
     QMetalSwapChain *currentSwapChain = nullptr;
+    // MadMapper: the current frame shares the slot of the frame begun before it
+    // (QRhi::SameFrameSlot): the slot's earlier frames are its group's, in flight
+    bool sameFrameSlot = false;
     QSet<QMetalSwapChain *> swapchains;
     QRhiMetalNativeHandles nativeHandlesStruct;
     QRhiDriverInfo driverInfoStruct;
