@@ -6823,7 +6823,7 @@ bool QD3D12SwapChain::createOrResize()
     }
 
     currentBackBufferIndex = swapChain->GetCurrentBackBufferIndex();
-    currentFrameSlot = 0;
+    // MadMapper: currentFrameSlot kept: its last frame's (the QRhi's slots, set by beginFrame)
     frameLatencyWaitDue = true; // wait already in the first frame, as instructed in the dxgi docs
 
     // MadMapper: its own timestamps (a pair a frame slot), when the QRhi has them

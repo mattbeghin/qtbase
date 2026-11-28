@@ -2591,6 +2591,16 @@ QRhi::FrameOpResult QRhiMetal::endOffscreenFrame(QRhi::EndFrameFlags flags)
 
     d->ofr.lastGpuTime += cb.GPUEndTime - cb.GPUStartTime;
 
+    // MadMapper: every readback is completed below, the swapchains' frames'
+    // too, which may still be in flight (a group's, SameFrameSlot): waited
+    // for, not taken as done for having been committed before this command
+    // buffer (it completing doesn't mean the queue's earlier ones did). No
+    // swapchain frame is being recorded (an offscreen frame is the only one)
+    for (QMetalSwapChain *sc : std::as_const(swapchains)) {
+        for (int i = 0; i < QMTL_FRAMES_IN_FLIGHT; ++i)
+            sc->waitUntilCompleted(i);
+    }
+
     finishActiveReadbacks(true);
 
     return QRhi::FrameOpSuccess;
